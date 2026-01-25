@@ -1,0 +1,201 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email == 'admin@cooktribe.app';
+    }
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Returns participation deadline in hours from settings/general.
+    // Defaults to 48 if not set.
+    function getParticipationDeadlineHours() {
+      return get(/databases/$(database)/documents/settings/general).data.participationDeadlineHours != null
+        ? get(/databases/$(database)/documents/settings/general).data.participationDeadlineHours
+        : 48;
+    }
+
+    // Checks if the update changes participants or related counters
+    function isParticipantsModification() {
+      return request.resource.data.participants != resource.data.participants ||
+             request.resource.data.participantsCount != resource.data.participantsCount;
+    }
+
+    // Determines if we are still before the participation deadline window
+    // Requires events to store start timestamp at resource.data.startAt (Timestamp)
+    function isBeforeParticipationDeadline() {
+      return resource.data.startAt == null ||
+             (request.time + duration.value(getParticipationDeadlineHours(), 'h')) < resource.data.startAt;
+    }
+
+    // Returns the event start timestamp by id
+    function getEventStartAt(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data.startAt;
+    }
+
+    // Determines if we are before participation deadline for a specific event id
+    function isBeforeParticipationDeadlineForEvent(eventId) {
+      let startAtTs = getEventStartAt(eventId);
+      return startAtTs == null || (request.time + duration.value(getParticipationDeadlineHours(), 'h')) < startAtTs;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Allow authenticated users to read basic profile info for discover/host features
+      // This enables showing host names and avatars in discover screen
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                       request.auth.uid == userId;
+      allow update: if isAuthenticated() && 
+                       (request.auth.uid == userId || isAdmin());
+      allow delete: if isAuthenticated() && 
+                       (request.auth.uid == userId || isAdmin());
+
+      // Active subscriptions subcollection: users/{userId}/activeSubscriptions/{subId}
+      match /activeSubscriptions/{subId} {
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        // User can create/update/delete their own active subscriptions; admin can always
+        allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      }
+    }
+    
+    // Joined events subcollection under users: users/{userId}/joinedEvents/{eventId}
+    match /users/{userId}/joinedEvents/{eventId} {
+      // User and admin can read joined entries
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // User can join if before deadline for that event
+      allow create: if isAuthenticated() && request.auth.uid == userId && isBeforeParticipationDeadlineForEvent(eventId);
+      // User can leave if before deadline for that event
+      allow delete: if isAuthenticated() && request.auth.uid == userId && isBeforeParticipationDeadlineForEvent(eventId);
+      // Prevent updates; only create/delete
+      allow update: if false;
+    }
+
+    // Settings collection - INCLUDING SUBSCRIPTION PLANS
+    match /settings/{settingId} {
+      // Public read access for subscription plans (type == 'plan')
+      // Any authenticated user can read plans to see available subscriptions
+      allow read: if isAuthenticated() && 
+                     (settingId == 'general' || resource.data.type == 'plan' || isAdmin());
+      
+      // Only admin can write settings
+      allow write: if isAdmin();
+    }
+    
+    // Subscription History - users can read their own history
+    match /subscriptionHistory/{historyId} {
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      // Allow users to create their own history entries; admin retains full control
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+    
+    // Events collection
+    match /events/{eventId} {
+      allow read: if true; // Public read for discovery
+      allow create: if isAuthenticated();
+      // Block join/leave (participants modifications) within the participation deadline window for non-admins
+      // Admin can always override
+      allow update: if isAuthenticated() &&
+                      (resource.data.createdBy == request.auth.uid || isAdmin()) &&
+                      (
+                        !isParticipantsModification() ||
+                        isAdmin() ||
+                        isBeforeParticipationDeadline()
+                      );
+      allow delete: if isAuthenticated() && 
+                       (resource.data.createdBy == request.auth.uid || isAdmin());
+
+      // Allow writing server-side matching results by admin service
+      // The worker will authenticate as admin service account (email exact match)
+      allow update: if isAuthenticated() && isAdmin();
+    }
+    
+    // Push tokens for notifications
+    match /pushTokens/{tokenId} {
+      allow read: if isAdmin();
+      allow write: if isAuthenticated() && 
+                      request.resource.data.userId == request.auth.uid;
+    }
+    
+    // User notifications
+    match /userNotifications/{notificationId} {
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin() || 
+                       (isAuthenticated() && request.resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && 
+                       (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // Notification history
+    match /notificationHistory/{historyId} {
+      allow read: if isAdmin() || 
+                     (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+    
+    // Admin content (recipes and regular content)
+    match /admin/content/recipes/{recipeId} {
+      allow read: if true; // Public read
+      allow write: if isAdmin();
+    }
+    
+    match /admin/content/regular/{docId} {
+      allow read: if true; // Public read
+      allow write: if isAdmin();
+    }
+    
+    // Event chat groups for completed events with matched participants
+    match /eventChats/{eventId} {
+      // Chat group info - readable by participants
+      allow read: if isAuthenticated() && isEventParticipant(eventId);
+      // Participants can create chat groups for events they joined
+      allow create: if isAuthenticated() && isEventParticipant(eventId);
+      // Only admin can update/delete chat groups
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Participants can read all messages
+        allow read: if isAuthenticated() && isEventParticipant(eventId);
+        // Participants can create messages
+        allow create: if isAuthenticated() && 
+                        isEventParticipant(eventId) && 
+                        request.resource.data.senderId == request.auth.uid;
+        // Only sender or admin can update/delete messages
+        allow update, delete: if isAuthenticated() && 
+                                (resource.data.senderId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // Helper function to check if user is a participant in an event OR the event creator
+    function isEventParticipant(eventId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/joinedEvents/$(eventId)) ||
+             get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
+    }
+
+    // Helper function to check if two users are event partners (in same completed event)
+    function isEventPartnerWith(otherUserId) {
+      // For now, allow reading profiles of users in chat groups
+      // This is a simplified approach - in production you might want more specific checks
+      return true;
+    }
+
+    
+    // Default deny for any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

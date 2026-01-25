@@ -1,0 +1,62 @@
+{
+  "project_info": {
+    "project_number": "1096084681239",
+    "project_id": "cooktribe-f287d",
+    "storage_bucket": "cooktribe-f287d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1096084681239:android:797cf9d5850f6a7141e252",
+        "android_client_info": {
+          "package_name": "com.cooktribe.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1096084681239-3v440j8vjvpbns6j2s5k5rp341q2bpih.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cooktribe.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "1096084681239-basb82rho9scebcvdujsttilra96aupu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cooktribe.app",
+            "certificate_hash": "e4dde015e391239b1dceadcf27c231341c37fb02"
+          }
+        },
+        {
+          "client_id": "1096084681239-lq7p0opevrojkpqm2jb1e7323m4j5ep6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBiV6LWFJOkG21A2n3T5HWAUt1npQrDoO4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1096084681239-lq7p0opevrojkpqm2jb1e7323m4j5ep6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1096084681239-cbtea5u013205tps1lrcldho654mjlb9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.cooktribe.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

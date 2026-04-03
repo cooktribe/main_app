@@ -3,9 +3,7 @@
     "name": "CookTribe",
     "slug": "cooktribe",
     "version": "1.0.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "scheme": "cooktribe",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
